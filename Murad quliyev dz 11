@@ -24,14 +24,14 @@ def download_yolo_files():
 
 def load_yolo_model():
     """Загружаем YOLO модель"""
-    # Загружаем классы объектов
+    
     with open("yolo/coco.names", "r") as f:
         classes = [line.strip() for line in f.readlines()]
     
-    # Загружаем сеть
+   
     net = cv2.dnn.readNet("yolo/yolov3.weights", "yolo/yolov3.cfg")
     
-    # Получаем имена выходных слоев
+    
     layer_names = net.getLayerNames()
     output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
     
@@ -41,11 +41,11 @@ def detect_objects_yolo(net, output_layers, image, target_classes=['person', 'ca
     """Обнаруживаем объекты с помощью YOLO"""
     height, width = image.shape[:2]
     
-    # Подготавливаем изображение для YOLO
+    
     blob = cv2.dnn.blobFromImage(image, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
     net.setInput(blob)
     
-    # Прямой проход через сеть
+    
     outputs = net.forward(output_layers)
     
     boxes = []
@@ -71,7 +71,7 @@ def detect_objects_yolo(net, output_layers, image, target_classes=['person', 'ca
                 confidences.append(float(confidence))
                 class_ids.append(class_id)
     
-    # Применяем Non-Maximum Suppression
+    
     indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
     
     result_boxes = []
@@ -92,7 +92,7 @@ def create_mask_for_object(obj_type):
         cv2.rectangle(mask, (0, 50), (80, 60), (255, 0, 0, 255), -1)
         return mask
     else:
-        # Для машин создаем маску в виде номера
+       
         mask = np.zeros((50, 120, 4), dtype=np.uint8)
         cv2.rectangle(mask, (5, 5), (115, 45), (0, 255, 0, 255), -1)
         cv2.putText(mask, "AI CAR", (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0, 255), 2)
@@ -102,13 +102,13 @@ def main_yolo():
     print("Задание 1: YOLO для обнаружения объектов и наложения масок")
     print("-" * 50)
     
-    # 1. Загружаем YOLO
+  
     print("\n1. Загрузка YOLO модели...")
     download_yolo_files()
     net, output_layers, classes = load_yolo_model()
     print("   YOLO модель загружена")
     
-    # 2. Загружаем изображение из интернета
+    
     print("\n2. Загрузка изображения...")
     import urllib.request
     url = "https://raw.githubusercontent.com/opencv/opencv/master/samples/data/lena.jpg"
@@ -116,7 +116,7 @@ def main_yolo():
     image = cv2.imread("images/input.jpg")
     print("   Изображение загружено")
     
-    # 3. Обнаруживаем объекты
+   
     print("\n3. Поиск паттернов...")
     boxes = detect_objects_yolo(net, output_layers, image)
     print(f"   Найдено объектов: {len(boxes)}")
@@ -125,7 +125,7 @@ def main_yolo():
         print("   Ошибка: Найдено менее двух объектов")
         return
     
-    # 4. Создаем и накладываем маски
+    
     print("\n4. Наложение масок...")
     result = image.copy()
     
@@ -149,10 +149,10 @@ def main_yolo():
         else:
             result[y:y+h, x:x+w] = mask_resized
     
-    # 5. Сохраняем результат
+    
     cv2.imwrite('images/yolo_result.jpg', result)
     
-    # Отображаем результат
+    
     fig, axes = plt.subplots(1, 2, figsize=(15, 5))
     axes[0].imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
     axes[0].set_title('Исходное изображение')
@@ -170,6 +170,6 @@ def main_yolo():
     print("   Результаты сохранены в папке images/")
 
 if __name__ == "__main__":
-    # Выберите один из вариантов:
-    main()  # Простой вариант с каскадами Хаара
-    # main_yolo()  # Продвинутый вариант с YOLO
+    
+    main()  
+    # main_yolo()  
