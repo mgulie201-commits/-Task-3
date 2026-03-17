@@ -1,0 +1,175 @@
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+def download_yolo_files():
+    """Скачиваем файлы YOLO"""
+    import urllib.request
+    
+    Path("yolo").mkdir(exist_ok=True)
+    
+    files = {
+        "yolov3.weights": "https://pjreddie.com/media/files/yolov3.weights",
+        "yolov3.cfg": "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg",
+        "coco.names": "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
+    }
+    
+    for filename, url in files.items():
+        filepath = f"yolo/{filename}"
+        if not Path(filepath).exists():
+            print(f"Скачиваем {filename}...")
+            urllib.request.urlretrieve(url, filepath)
+            print(f"Сохранено: {filepath}")
+
+def load_yolo_model():
+    """Загружаем YOLO модель"""
+    # Загружаем классы объектов
+    with open("yolo/coco.names", "r") as f:
+        classes = [line.strip() for line in f.readlines()]
+    
+    # Загружаем сеть
+    net = cv2.dnn.readNet("yolo/yolov3.weights", "yolo/yolov3.cfg")
+    
+    # Получаем имена выходных слоев
+    layer_names = net.getLayerNames()
+    output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
+    
+    return net, output_layers, classes
+
+def detect_objects_yolo(net, output_layers, image, target_classes=['person', 'car']):
+    """Обнаруживаем объекты с помощью YOLO"""
+    height, width = image.shape[:2]
+    
+    # Подготавливаем изображение для YOLO
+    blob = cv2.dnn.blobFromImage(image, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
+    net.setInput(blob)
+    
+    # Прямой проход через сеть
+    outputs = net.forward(output_layers)
+    
+    boxes = []
+    confidences = []
+    class_ids = []
+    
+    for output in outputs:
+        for detection in output:
+            scores = detection[5:]
+            class_id = np.argmax(scores)
+            confidence = scores[class_id]
+            
+            if confidence > 0.5 and classes[class_id] in target_classes:
+                center_x = int(detection[0] * width)
+                center_y = int(detection[1] * height)
+                w = int(detection[2] * width)
+                h = int(detection[3] * height)
+                
+                x = int(center_x - w / 2)
+                y = int(center_y - h / 2)
+                
+                boxes.append([x, y, w, h])
+                confidences.append(float(confidence))
+                class_ids.append(class_id)
+    
+    # Применяем Non-Maximum Suppression
+    indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
+    
+    result_boxes = []
+    if len(indexes) > 0:
+        for i in indexes.flatten():
+            result_boxes.append(boxes[i])
+    
+    return result_boxes
+
+def create_mask_for_object(obj_type):
+    """Создаем маску в зависимости от типа объекта"""
+    if obj_type == 'person':
+        # Для людей создаем маску в виде шляпы
+        mask = np.zeros((100, 80, 4), dtype=np.uint8)
+        # Верх шляпы
+        cv2.rectangle(mask, (20, 20), (60, 50), (255, 0, 0, 255), -1)
+        # Поля шляпы
+        cv2.rectangle(mask, (0, 50), (80, 60), (255, 0, 0, 255), -1)
+        return mask
+    else:
+        # Для машин создаем маску в виде номера
+        mask = np.zeros((50, 120, 4), dtype=np.uint8)
+        cv2.rectangle(mask, (5, 5), (115, 45), (0, 255, 0, 255), -1)
+        cv2.putText(mask, "AI CAR", (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0, 255), 2)
+        return mask
+
+def main_yolo():
+    print("Задание 1: YOLO для обнаружения объектов и наложения масок")
+    print("-" * 50)
+    
+    # 1. Загружаем YOLO
+    print("\n1. Загрузка YOLO модели...")
+    download_yolo_files()
+    net, output_layers, classes = load_yolo_model()
+    print("   YOLO модель загружена")
+    
+    # 2. Загружаем изображение из интернета
+    print("\n2. Загрузка изображения...")
+    import urllib.request
+    url = "https://raw.githubusercontent.com/opencv/opencv/master/samples/data/lena.jpg"
+    urllib.request.urlretrieve(url, "images/input.jpg")
+    image = cv2.imread("images/input.jpg")
+    print("   Изображение загружено")
+    
+    # 3. Обнаруживаем объекты
+    print("\n3. Поиск паттернов...")
+    boxes = detect_objects_yolo(net, output_layers, image)
+    print(f"   Найдено объектов: {len(boxes)}")
+    
+    if len(boxes) < 2:
+        print("   Ошибка: Найдено менее двух объектов")
+        return
+    
+    # 4. Создаем и накладываем маски
+    print("\n4. Наложение масок...")
+    result = image.copy()
+    
+    for i, box in enumerate(boxes):
+        x, y, w, h = box
+        print(f"   Объект {i+1}: координаты ({x}, {y}), размер {w}x{h}")
+        
+        # Создаем маску для объекта
+        mask = create_mask_for_object('person')  # Упрощенно, всегда используем маску для человека
+        mask_resized = cv2.resize(mask, (w, h))
+        
+        # Накладываем маску
+        roi = result[y:y+h, x:x+w]
+        
+        if mask_resized.shape[2] == 4:
+            alpha = mask_resized[:, :, 3] / 255.0
+            alpha = np.stack([alpha, alpha, alpha], axis=2)
+            mask_rgb = mask_resized[:, :, :3]
+            blended = (roi * (1 - alpha) + mask_rgb * alpha).astype(np.uint8)
+            result[y:y+h, x:x+w] = blended
+        else:
+            result[y:y+h, x:x+w] = mask_resized
+    
+    # 5. Сохраняем результат
+    cv2.imwrite('images/yolo_result.jpg', result)
+    
+    # Отображаем результат
+    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+    axes[0].imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    axes[0].set_title('Исходное изображение')
+    axes[0].axis('off')
+    
+    axes[1].imshow(cv2.cvtColor(result, cv2.COLOR_BGR2RGB))
+    axes[1].set_title('С наложенными масками')
+    axes[1].axis('off')
+    
+    plt.tight_layout()
+    plt.savefig('images/yolo_comparison.png')
+    plt.show()
+    
+    print("\n✅ Задание выполнено успешно!")
+    print("   Результаты сохранены в папке images/")
+
+if __name__ == "__main__":
+    # Выберите один из вариантов:
+    main()  # Простой вариант с каскадами Хаара
+    # main_yolo()  # Продвинутый вариант с YOLO
